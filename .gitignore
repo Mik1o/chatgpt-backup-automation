@@ -1,0 +1,12 @@
+.local/
+node_modules/
+.env
+*.log
+*.zip
+*.crdownload
+.DS_Store
+config.local.json
+chrome-user-data/
+staging/
+downloads/
+tmp/
