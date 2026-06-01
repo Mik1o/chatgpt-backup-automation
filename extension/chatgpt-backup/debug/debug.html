@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>ChatGPT Backup Automation Debug</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 24px;
+        max-width: 920px;
+        color: #1f2933;
+      }
+
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      pre {
+        background: #f5f7fa;
+        border: 1px solid #d9e2ec;
+        border-radius: 6px;
+        padding: 12px;
+        overflow: auto;
+      }
+
+      section {
+        margin: 22px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ChatGPT Backup Automation Debug</h1>
+
+    <section>
+      <h2>Protocol</h2>
+      <p>This page documents the automation bridge protocol for later manual testing.</p>
+      <pre id="protocol"></pre>
+    </section>
+
+    <section>
+      <h2>Manual Testing Notes</h2>
+      <ul>
+        <li>Load the unpacked extension in Chrome during a later phase.</li>
+        <li>Open a signed-in <code>https://chatgpt.com/</code> tab only in a dedicated test profile.</li>
+        <li>Dispatch the request shape from the page context and wait for the result message.</li>
+        <li>Verify download completion from Chrome downloads metadata and the staging directory.</li>
+      </ul>
+    </section>
+
+    <script src="./debug.js"></script>
+  </body>
+</html>

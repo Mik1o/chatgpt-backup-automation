@@ -1,3 +1,8 @@
+const AUTOMATION_EXPORT_MARKDOWN_ZIP_MESSAGE = 'CHATGPT_BACKUP_AUTOMATION_EXPORT_MARKDOWN_ZIP';
+const AUTOMATION_ALLOWED_HOSTNAMES = new Set(['chatgpt.com', 'www.chatgpt.com']);
+const DEFAULT_USER_LABEL = '<img src="https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png" width="24" alt="User" />';
+const DEFAULT_ASSISTANT_LABEL = '<img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" width="24" alt="Assistant" />';
+
 function generateOffsets(startOffset, total) {
   const interval = 20;
   const start = startOffset + interval;
@@ -39,6 +44,36 @@ function sanitizeFilename(name = 'untitled') {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120) || 'untitled';
+}
+
+function normalizeAutomationBucket(bucket) {
+  if (bucket !== 'project' && bucket !== 'recent') {
+    throw new Error('Invalid automation bucket');
+  }
+
+  return bucket;
+}
+
+function buildAutomationZipFilename({ bucket, name, backupRunId } = {}) {
+  const normalizedBucket = normalizeAutomationBucket(bucket);
+  const fallbackName = normalizedBucket === 'project' ? 'project' : '最近对话';
+  const safeName = sanitizeFilename(name || fallbackName).slice(0, 80) || fallbackName;
+  const safeRunId = sanitizeFilename(backupRunId || new Date().toISOString().replace(/[:.]/g, '-')).slice(0, 60);
+
+  return `chatgpt-backup__${normalizedBucket}__${safeName}__${safeRunId}.zip`;
+}
+
+function getSenderUrl(sender) {
+  return sender?.url || sender?.tab?.url || '';
+}
+
+function isAllowedAutomationSender(sender) {
+  try {
+    const senderUrl = new URL(getSenderUrl(sender));
+    return senderUrl.protocol === 'https:' && AUTOMATION_ALLOWED_HOSTNAMES.has(senderUrl.hostname);
+  } catch (_error) {
+    return false;
+  }
 }
 
 function dedupeFilename(baseName, seenNames) {
@@ -624,9 +659,10 @@ async function blobToDataUrl(blob) {
   return `data:${blob.type || 'application/octet-stream'};base64,${base64Data}`;
 }
 
-async function saveAs(contentString = '', fileType = 'text/plain', filename = 'file.txt') {
+async function saveAs(contentString = '', fileType = 'text/plain', filename = 'file.txt', options = {}) {
   let dataUrl = null;
   let shouldRevokeObjectUrl = false;
+  const shouldPromptForSave = options.saveAs ?? true;
 
   if (fileType === 'application/zip') {
     dataUrl = `data:${fileType};base64,${contentString}`;
@@ -651,7 +687,7 @@ async function saveAs(contentString = '', fileType = 'text/plain', filename = 'f
     chrome.downloads.download({
       url: dataUrl,
       filename,
-      saveAs: true,
+      saveAs: shouldPromptForSave,
     }, (downloadId) => {
       if (chrome.runtime.lastError) {
         if (shouldRevokeObjectUrl) {
@@ -680,7 +716,134 @@ async function saveAs(contentString = '', fileType = 'text/plain', filename = 'f
   });
 }
 
+async function getMarkdownPreferences() {
+  return new Promise((resolve, reject) => {
+    chrome.storage.sync.get(['userLabel', 'assistantLabel', 'markdownExtension', 'mdxFrontmatter'], (result) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+        return;
+      }
+
+      resolve({
+        userLabel: result.userLabel || DEFAULT_USER_LABEL,
+        assistantLabel: result.assistantLabel || DEFAULT_ASSISTANT_LABEL,
+        markdownExtension: result.markdownExtension || '.md',
+        mdxFrontmatter: result.mdxFrontmatter || '---\ntitle: "{{title}}"\n---',
+      });
+    });
+  });
+}
+
+function buildAutomationSuccessResponse(payload, filename, downloadId) {
+  return {
+    ok: true,
+    filename,
+    bucket: payload.bucket,
+    name: payload.name,
+    backupRunId: payload.backupRunId,
+    downloadId,
+  };
+}
+
+function validateAutomationPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Missing automation payload');
+  }
+
+  const bucket = normalizeAutomationBucket(payload.bucket);
+  const backupRunId = typeof payload.backupRunId === 'string' && payload.backupRunId.trim()
+    ? payload.backupRunId.trim()
+    : new Date().toISOString().replace(/[:.]/g, '-');
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+
+  return { bucket, name, backupRunId };
+}
+
+async function exportRecentMarkdownZipForAutomation(payload) {
+  activeBackupController = createCancellationController();
+  const preferences = await getMarkdownPreferences();
+  const filename = buildAutomationZipFilename(payload);
+  const result = await main(0, -1, activeBackupController);
+
+  setProgress('Building automation markdown zip...', result.conversations.length, result.cancelled ? 'cancelled' : 'running');
+  const downloadId = await downloadMarkdownZip(
+    result.conversations,
+    preferences.userLabel,
+    preferences.assistantLabel,
+    preferences.markdownExtension,
+    preferences.mdxFrontmatter,
+    { filename, forceZip: true, saveAs: false },
+  );
+
+  return buildAutomationSuccessResponse(payload, filename, downloadId);
+}
+
+async function exportProjectMarkdownZipForAutomation(payload, tab) {
+  if (!tab?.url || tab.id == null) {
+    throw new Error('Automation project export requires a ChatGPT tab');
+  }
+
+  const projectInfo = parseProjectInfoFromUrl(tab.url);
+  if (!projectInfo.isProjectChat || !projectInfo.normalizedProjectIdFromSlug) {
+    throw new Error('Current tab is not a project chat');
+  }
+
+  const preferences = await getMarkdownPreferences();
+  const filename = buildAutomationZipFilename(payload);
+  const { token, id } = await getConversationIdFromTabs([tab]);
+  const referenceConversation = await fetchConversation(token, id);
+  const conversationIdsFromDom = await getProjectConversationIdsFromTab(tab.id, projectInfo.projectSlug);
+  const orderedConversationIds = Array.from(new Set([id, ...conversationIdsFromDom]));
+
+  activeBackupController = createCancellationController();
+  const result = await fetchRawConversationsByIds(token, orderedConversationIds, activeBackupController);
+  const filteredRawConversations = filterRawConversationsByProject(result.rawConversations, projectInfo, referenceConversation);
+  const fallbackRawConversations = filteredRawConversations.length ? filteredRawConversations : result.rawConversations;
+  const filteredConversations = normalizeRawConversations(fallbackRawConversations);
+
+  setProgress('Building automation project markdown zip...', filteredConversations.length, result.cancelled ? 'cancelled' : 'running');
+  const downloadId = await downloadMarkdownZip(
+    filteredConversations,
+    preferences.userLabel,
+    preferences.assistantLabel,
+    preferences.markdownExtension,
+    preferences.mdxFrontmatter,
+    { filename, forceZip: true, saveAs: false },
+  );
+
+  return buildAutomationSuccessResponse(payload, filename, downloadId);
+}
+
+async function handleAutomationMarkdownZipExport(request, sender) {
+  if (!isAllowedAutomationSender(sender)) {
+    throw new Error('Automation export rejected: sender is not chatgpt.com');
+  }
+
+  const payload = validateAutomationPayload(request.payload);
+
+  try {
+    if (payload.bucket === 'project') {
+      return await exportProjectMarkdownZipForAutomation(payload, sender.tab);
+    }
+
+    return await exportRecentMarkdownZipForAutomation(payload);
+  } finally {
+    activeBackupController = null;
+  }
+}
+
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+  if (request.message === AUTOMATION_EXPORT_MARKDOWN_ZIP_MESSAGE) {
+    handleAutomationMarkdownZipExport(request, sender)
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        console.error('GPT-BACKUP::ERROR::AUTOMATION_MARKDOWN_ZIP', error);
+        activeBackupController = null;
+        sendResponse({ ok: false, error: error.message || String(error) });
+      });
+    return true;
+  }
+
   if (request.message === 'getColorScheme') {
     chrome.storage.local.set({ colorScheme: request.colorScheme });
   }
@@ -1101,9 +1264,9 @@ function normalizeRawConversations(rawConversations) {
   return rawConversations.map((rawConversation) => parseConversation(rawConversation));
 }
 
-async function downloadMarkdownZip(chats, userLabel, assistantLabel, markdownExtension = '.md', mdxFrontmatter = '---\ntitle: "{{title}}"\n---') {
+async function downloadMarkdownZip(chats, userLabel, assistantLabel, markdownExtension = '.md', mdxFrontmatter = '---\ntitle: "{{title}}"\n---', downloadOptions = {}) {
   const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
-  const onlyOneChat = chats.length === 1;
+  const onlyOneChat = chats.length === 1 && !downloadOptions.forceZip;
   const enrichedChats = enrichChatsForJson(chats);
 
   if (onlyOneChat) {
@@ -1114,7 +1277,7 @@ async function downloadMarkdownZip(chats, userLabel, assistantLabel, markdownExt
       markdownExtension,
       mdxFrontmatter,
     );
-    return saveAs(markdown, 'text/markdown', `${title}${markdownExtension}`);
+    return saveAs(markdown, 'text/markdown', `${title}${markdownExtension}`, downloadOptions);
   }
 
   const zip = new JSZip();
@@ -1133,7 +1296,7 @@ async function downloadMarkdownZip(chats, userLabel, assistantLabel, markdownExt
   }
 
   const content = await zip.generateAsync({ type: 'base64' });
-  return saveAs(content, 'application/zip', `gpt-backup-${dateStr}.zip`);
+  return saveAs(content, 'application/zip', downloadOptions.filename || `gpt-backup-${dateStr}.zip`, downloadOptions);
 }
 function jsonToMarkdown(
   json,
