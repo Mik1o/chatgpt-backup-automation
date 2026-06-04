@@ -1,0 +1,28 @@
+{
+  "name": "chatgpt-backup-automation",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mik1o/chatgpt-backup-automation.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Mik1o/chatgpt-backup-automation/issues"
+  },
+  "homepage": "https://github.com/Mik1o/chatgpt-backup-automation#readme",
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}
