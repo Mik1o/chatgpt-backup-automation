@@ -9,6 +9,7 @@
   },
   "scripts": {
     "phase3:smoke": "node app/phase3-smoke-test.js",
+    "phase3b:smoke": "PLAYWRIGHT_BROWSERS_PATH=/Users/one/chatgpt-backup-automation/.local/ms-playwright node app/phase3b-smoke-test.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
