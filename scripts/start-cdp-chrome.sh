@@ -31,23 +31,25 @@ mkdir -p "$USER_DATA_DIR"
 
 echo "Starting automation-only Chrome with:"
 echo "  user-data-dir: $USER_DATA_DIR"
-echo "  extension:     $EXTENSION_PATH"
 echo "  CDP:           http://$CDP_HOST:$CDP_PORT"
 echo
 echo "After Chrome opens:"
-echo "  1. Log in to the target ChatGPT account."
-echo "  2. Confirm Personal space."
-echo "  3. Confirm English UI."
-echo "  4. Open a recent chat, not a project chat."
-echo "  5. In a second Terminal, run: .local/bin/npm run phase3c:smoke"
+echo "  1. Open chrome://extensions/"
+echo "  2. Enable Developer mode."
+echo "  3. Click Load unpacked."
+echo "  4. Select: $EXTENSION_PATH"
+echo "  5. If Chrome shows an error, copy the full error text and stop."
+echo "  6. If ChatGPT-Backup appears, open or refresh https://chatgpt.com/"
+echo "  7. Complete Cloudflare/login if shown."
+echo "  8. Confirm Personal space and English UI."
+echo "  9. Open a recent normal chat, not a project chat."
+echo " 10. In a second Terminal, run: .local/bin/npm run phase3c:smoke"
 echo
 
 exec "$CHROME" \
   --remote-debugging-address="$CDP_HOST" \
   --remote-debugging-port="$CDP_PORT" \
   --user-data-dir="$USER_DATA_DIR" \
-  --disable-extensions-except="$EXTENSION_PATH" \
-  --load-extension="$EXTENSION_PATH" \
   --no-first-run \
   --no-default-browser-check \
   "https://chatgpt.com/"

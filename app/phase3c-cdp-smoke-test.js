@@ -21,6 +21,15 @@ const backupRunId = `phase3c-smoke-${runTimestamp}`;
 const logPath = path.join(logsDir, `phase3c-cdp-smoke-test-${runTimestamp}.log`);
 const resultPath = path.join(stateDir, 'phase3c-cdp-smoke-result.json');
 const maxWaitMs = 10 * 60 * 1000;
+const bridgeTimeoutGuidance = [
+  'Timed out waiting for extension bridge response.',
+  'Possible causes:',
+  '1. ChatGPT-Backup is not installed/enabled in chrome://extensions.',
+  '2. The content script was not injected into the current ChatGPT page; refresh the page before rerunning the smoke test.',
+  '3. The current page is not a chatgpt.com conversation page.',
+  '4. The page is still on Cloudflare, login, or verification flow.',
+  '5. The current chat is a project chat rather than a recent normal chat.',
+].join('\n');
 
 let browser = null;
 let selectedPage = null;
@@ -211,6 +220,23 @@ async function triggerBridge(page) {
   }), { requestId, backupRunId, timeoutMs: maxWaitMs });
 }
 
+function explainSmokeFailure(error) {
+  const message = error.message || String(error);
+  if (message === 'Timed out waiting for extension bridge response') {
+    return bridgeTimeoutGuidance;
+  }
+
+  if (message.includes('Execution context was destroyed')) {
+    return [
+      message,
+      'Do not refresh, navigate, switch conversations, or change pages after pressing Enter in the smoke test.',
+      'Refresh the ChatGPT tab before rerunning, then keep the page stable until the test finishes.',
+    ].join('\n');
+  }
+
+  return message;
+}
+
 function findNewZip(beforeZipNames, responseFilename) {
   const before = new Set(beforeZipNames);
   const after = listZipFiles().sort((a, b) => b.mtimeMs - a.mtimeMs);
@@ -343,6 +369,7 @@ async function main() {
 
 main().catch(async (error) => {
   const screenshotPath = await captureFailureScreenshot();
+  const errorMessage = explainSmokeFailure(error);
   const result = {
     ok: false,
     timestamp: runTimestamp,
@@ -354,7 +381,7 @@ main().catch(async (error) => {
     stagingDir,
     selectedPageUrl: selectedPage?.url() || null,
     discoveredPageUrls: browser ? getAllPages().map((page) => page.url()) : [],
-    error: error.message || String(error),
+    error: errorMessage,
     screenshotPath,
     browserClosed: false,
     browserKeptOpen: Boolean(browser),
