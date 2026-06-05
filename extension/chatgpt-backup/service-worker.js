@@ -1,5 +1,6 @@
 const AUTOMATION_EXPORT_MARKDOWN_ZIP_MESSAGE = 'CHATGPT_BACKUP_AUTOMATION_EXPORT_MARKDOWN_ZIP';
 const AUTOMATION_ALLOWED_HOSTNAMES = new Set(['chatgpt.com', 'www.chatgpt.com']);
+const AUTOMATION_DOWNLOAD_DIRECTORY = 'ChatGPT_Backup_Staging';
 const DEFAULT_USER_LABEL = '<img src="https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png" width="24" alt="User" />';
 const DEFAULT_ASSISTANT_LABEL = '<img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" width="24" alt="Assistant" />';
 
@@ -61,6 +62,10 @@ function buildAutomationZipFilename({ bucket, name, backupRunId } = {}) {
   const safeRunId = sanitizeFilename(backupRunId || new Date().toISOString().replace(/[:.]/g, '-')).slice(0, 60);
 
   return `chatgpt-backup__${normalizedBucket}__${safeName}__${safeRunId}.zip`;
+}
+
+function buildAutomationDownloadFilename(filename) {
+  return `${AUTOMATION_DOWNLOAD_DIRECTORY}/${sanitizeFilename(filename)}`;
 }
 
 function getSenderUrl(sender) {
@@ -663,6 +668,7 @@ async function saveAs(contentString = '', fileType = 'text/plain', filename = 'f
   let dataUrl = null;
   let shouldRevokeObjectUrl = false;
   const shouldPromptForSave = options.saveAs ?? true;
+  const chromeFilename = options.chromeFilename || filename;
 
   if (fileType === 'application/zip') {
     dataUrl = `data:${fileType};base64,${contentString}`;
@@ -686,7 +692,7 @@ async function saveAs(contentString = '', fileType = 'text/plain', filename = 'f
   return new Promise((resolve, reject) => {
     chrome.downloads.download({
       url: dataUrl,
-      filename,
+      filename: chromeFilename,
       saveAs: shouldPromptForSave,
     }, (downloadId) => {
       if (chrome.runtime.lastError) {
@@ -772,7 +778,7 @@ async function exportRecentMarkdownZipForAutomation(payload) {
     preferences.assistantLabel,
     preferences.markdownExtension,
     preferences.mdxFrontmatter,
-    { filename, forceZip: true, saveAs: false },
+    { filename, chromeFilename: buildAutomationDownloadFilename(filename), forceZip: true, saveAs: false },
   );
 
   return buildAutomationSuccessResponse(payload, filename, downloadId);
@@ -808,7 +814,7 @@ async function exportProjectMarkdownZipForAutomation(payload, tab) {
     preferences.assistantLabel,
     preferences.markdownExtension,
     preferences.mdxFrontmatter,
-    { filename, forceZip: true, saveAs: false },
+    { filename, chromeFilename: buildAutomationDownloadFilename(filename), forceZip: true, saveAs: false },
   );
 
   return buildAutomationSuccessResponse(payload, filename, downloadId);

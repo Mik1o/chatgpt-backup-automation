@@ -147,31 +147,17 @@ async function waitForChatGptPage() {
   return page;
 }
 
-async function setDownloadBehavior(page) {
+async function resetDownloadBehavior(page) {
   try {
     const cdpSession = await page.context().newCDPSession(page);
     await cdpSession.send('Browser.setDownloadBehavior', {
-      behavior: 'allow',
-      downloadPath: stagingDir,
+      behavior: 'default',
     });
-    log('configured download behavior via Browser.setDownloadBehavior', { stagingDir });
+    log('reset download behavior to Chrome default');
     return true;
-  } catch (browserError) {
-    try {
-      const cdpSession = await page.context().newCDPSession(page);
-      await cdpSession.send('Page.setDownloadBehavior', {
-        behavior: 'allow',
-        downloadPath: stagingDir,
-      });
-      log('configured download behavior via Page.setDownloadBehavior', { stagingDir });
-      return true;
-    } catch (pageError) {
-      log('download behavior configuration failed; continuing', {
-        browserError: browserError.message || String(browserError),
-        pageError: pageError.message || String(pageError),
-      });
-      return false;
-    }
+  } catch (error) {
+    log('download behavior reset failed; continuing', { error: error.message || String(error) });
+    return false;
   }
 }
 
@@ -213,7 +199,7 @@ async function triggerBridge(page) {
       requestId: evalRequestId,
       payload: {
         bucket: 'recent',
-        name: '最近对话',
+        name: 'recent',
         backupRunId: evalBackupRunId,
       },
     }, window.location.origin);
@@ -301,7 +287,7 @@ async function main() {
   selectedPage = await waitForChatGptPage();
   log('selected ChatGPT page', { url: selectedPage.url() });
 
-  const downloadBehaviorConfigured = await setDownloadBehavior(selectedPage);
+  const downloadBehaviorConfigured = await resetDownloadBehavior(selectedPage);
   const extensionLoaded = await inferExtensionLoaded();
 
   await promptEnter([
@@ -313,7 +299,12 @@ async function main() {
     'Do not continue from a Cloudflare, login, or project page.',
   ].join('\n'));
 
-  log('manual confirmation received', { url: selectedPage.url(), extensionLoaded, downloadBehaviorConfigured });
+  log('manual confirmation received', {
+    url: selectedPage.url(),
+    extensionLoaded,
+    downloadBehaviorConfigured,
+    downloadBehavior: 'Chrome default Downloads directory; extension supplies ChatGPT_Backup_Staging relative filename',
+  });
 
   const beforeZips = listZipFiles();
   log('staging before ZIPs', { count: beforeZips.length, names: beforeZips.map((file) => file.name) });
@@ -352,6 +343,7 @@ async function main() {
     selectedPageUrl: selectedPage.url(),
     extensionLoaded,
     downloadBehaviorConfigured,
+    downloadBehavior: 'Chrome default Downloads directory; extension supplies ChatGPT_Backup_Staging relative filename',
     bridgeResponse,
     zip: {
       filename: newZip.name,
@@ -390,5 +382,10 @@ main().catch(async (error) => {
   log('phase3c cdp smoke failed', result);
   process.exitCode = 1;
 }).finally(() => {
-  if (logStream) logStream.end();
+  const exitCode = process.exitCode || 0;
+  if (logStream) {
+    logStream.end(() => process.exit(exitCode));
+  } else {
+    process.exit(exitCode);
+  }
 });
