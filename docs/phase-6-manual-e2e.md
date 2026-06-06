@@ -153,6 +153,10 @@ Verified on June 6, 2026:
 - Doctor completed with `success`, exit code 0, and returned to the shell without closing automation Chrome.
 - Config, dependencies, writable paths, CDP, ChatGPT page, extension bridge ping, staging inventory, archive root, `_index.json`, and latest Phase 5 summary passed.
 - An earlier `run:once` correctly stopped at fatal preflight before export or organizer when CDP was unavailable.
-- Full export-plus-organizer E2E remains unverified until the user runs `run:once` and explicitly confirms the configured account and browser state.
+- Full `run:once` E2E completed successfully with run ID `phase6-run-2026-06-06_221938`.
+- Phase 4 exported recent conversations and four projects into five verified ZIPs containing 29 Markdown entries.
+- Phase 5 processed all five ZIPs, wrote 29 entries with zero warnings or failed ZIPs, and updated `_index.json`.
+- The archive contains 27 unique conversation files because three project entries share one `conversation_id` and correctly update one archive file.
+- All archived Markdown files passed frontmatter validation, staging ZIPs remained present, and automation Chrome remained open.
 
-Phase 7 may add LaunchAgent scheduling, missed-run policy, and notifications only after a full Phase 6 E2E succeeds.
+Phase 7 may add LaunchAgent scheduling, missed-run policy, and notifications.
