@@ -32,8 +32,10 @@ async function run() {
 module.exports = { run };
 
 if (require.main === module) {
-  run().catch((error) => {
-    console.error(error.message || String(error));
-    process.exitCode = 1;
-  });
+  run()
+    .catch((error) => {
+      console.error(error.message || String(error));
+      process.exitCode = 1;
+    })
+    .finally(() => process.exit(process.exitCode || 0));
 }

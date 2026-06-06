@@ -71,7 +71,7 @@ Doctor writes:
 .local/state/doctor-summary-<timestamp>.json
 ```
 
-CDP, ChatGPT page, and extension availability are warnings for doctor. Invalid config or unwritable required directories are fatal.
+CDP, ChatGPT page, and extension availability are warnings for doctor when unavailable. A successful bridge ping confirms the extension content script and allows doctor to report success. Invalid config or unwritable required directories are fatal.
 
 ## F. Run Once
 
@@ -150,10 +150,9 @@ Failures may also produce screenshots under `.local/screenshots/`.
 
 Verified on June 6, 2026:
 
-- Doctor completed with `warning` and exit code 0.
-- Config, dependencies, writable paths, staging inventory, archive root, `_index.json`, and latest Phase 5 summary passed.
-- CDP was not running at `127.0.0.1:9222`.
-- `run:once` correctly stopped at fatal preflight before export or organizer.
-- Full export-plus-organizer E2E remains unverified until automation Chrome is manually started and the updated extension/page are reloaded.
+- Doctor completed with `success`, exit code 0, and returned to the shell without closing automation Chrome.
+- Config, dependencies, writable paths, CDP, ChatGPT page, extension bridge ping, staging inventory, archive root, `_index.json`, and latest Phase 5 summary passed.
+- An earlier `run:once` correctly stopped at fatal preflight before export or organizer when CDP was unavailable.
+- Full export-plus-organizer E2E remains unverified until the user runs `run:once` and explicitly confirms the configured account and browser state.
 
 Phase 7 may add LaunchAgent scheduling, missed-run policy, and notifications only after a full Phase 6 E2E succeeds.

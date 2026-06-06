@@ -70,6 +70,10 @@ function doctorExitCode(checks) {
   return summarizeChecks(checks).fatalCount ? 1 : 0;
 }
 
+function extensionConfirmationStatus({ pingOk }) {
+  return pingOk ? 'success' : 'warning';
+}
+
 function aggregateRunStatus({ preflightStatus, recentStatus, exportStatus, organizeStatus }) {
   if (preflightStatus === 'failed' || recentStatus === 'failed' || exportStatus === 'failed' || organizeStatus === 'failed') return 'failed';
   if (exportStatus === 'partial' || organizeStatus === 'partial') return 'partial';
@@ -238,12 +242,10 @@ async function runPreflight({ requireCdp = false, requireChatGptPage = false, re
   }
   const latestPhase5 = latestMatchingFile(path.join(PROJECT_ROOT, '.local', 'state'), /^phase5-organize-summary-.*\.json$/);
   addCheck(checks, 'latest_phase5_summary', latestPhase5 ? 'success' : 'warning', latestPhase5 || 'not found');
-  addCheck(
-    checks,
-    'extension_manual_confirmation',
-    requirePing ? 'success' : 'warning',
-    requirePing ? 'Manual confirmation is required by run:once after preflight' : 'Confirm ChatGPT-Backup in chrome://extensions before run:once',
-  );
+  const pingOk = checks.find((check) => check.name === 'extension_bridge_ping')?.status === 'success';
+  addCheck(checks, 'extension_manual_confirmation', extensionConfirmationStatus({ pingOk }), pingOk
+    ? 'Bridge ping confirms the extension content script; run:once still requires explicit user confirmation'
+    : 'Confirm ChatGPT-Backup in chrome://extensions before run:once');
 
   return { config, checks, ...summarizeChecks(checks), browser, page, accountRoot, indexPath, stagingZipCount };
 }
@@ -261,6 +263,7 @@ module.exports = {
   createRunSummary,
   determineFailureStage,
   doctorExitCode,
+  extensionConfirmationStatus,
   ensureDir,
   loadConfig,
   localTimestamp,

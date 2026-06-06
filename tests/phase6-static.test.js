@@ -9,6 +9,7 @@ const {
   createRunSummary,
   determineFailureStage,
   doctorExitCode,
+  extensionConfirmationStatus,
   summarizeChecks,
   validateConfig,
 } = require('../app/lib/phase6');
@@ -40,6 +41,8 @@ assert.deepEqual(summarizeChecks([
 ]), { status: 'failed', fatalCount: 1, warningCount: 1 });
 assert.equal(doctorExitCode([{ status: 'warning' }]), 0);
 assert.equal(doctorExitCode([{ status: 'fatal' }]), 1);
+assert.equal(extensionConfirmationStatus({ pingOk: true }), 'success');
+assert.equal(extensionConfirmationStatus({ pingOk: false }), 'warning');
 
 assert.equal(aggregateRunStatus({ preflightStatus: 'success', recentStatus: 'success', exportStatus: 'success', organizeStatus: 'success' }), 'success');
 assert.equal(aggregateRunStatus({ preflightStatus: 'warning', recentStatus: 'success', exportStatus: 'success', organizeStatus: 'success' }), 'success');
@@ -85,10 +88,14 @@ assert.ok(contentScript.includes('AUTOMATION_PING_RESULT_TYPE'));
 assert.ok(contentScript.includes('extension: "ChatGPT-Backup"'));
 assert.ok(doctorSource.includes('doctor-summary-'));
 assert.ok(runOnceSource.includes('run-once-summary-'));
+assert.ok(doctorSource.includes('process.exit(process.exitCode || 0)'));
+assert.ok(runOnceSource.includes('process.exit(process.exitCode || 0)'));
 assert.ok(runOnceSource.includes('skipConfirmation: true'));
 assert.ok(runOnceSource.includes('cdpUrl: preflight.config.cdp_url'));
 assert.ok(runOnceSource.includes('stagingDir: preflight.config.staging_dir'));
 assert.equal(runOnceSource.includes('unlinkSync'), false);
 assert.equal(runOnceSource.includes('rmSync'), false);
+assert.equal(doctorSource.includes('browser.close'), false);
+assert.equal(runOnceSource.includes('browser.close'), false);
 
 console.log('phase6 static checks passed');
