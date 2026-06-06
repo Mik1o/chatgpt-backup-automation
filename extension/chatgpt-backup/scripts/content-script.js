@@ -3,6 +3,8 @@ const AUTOMATION_EXTENSION_SOURCE = "CHATGPT_BACKUP_EXTENSION";
 const AUTOMATION_EXPORT_MARKDOWN_ZIP_MESSAGE = "CHATGPT_BACKUP_AUTOMATION_EXPORT_MARKDOWN_ZIP";
 const AUTOMATION_EXPORT_MARKDOWN_ZIP_TYPE = "EXPORT_MARKDOWN_ZIP";
 const AUTOMATION_EXPORT_MARKDOWN_ZIP_RESULT_TYPE = "EXPORT_MARKDOWN_ZIP_RESULT";
+const AUTOMATION_PING_TYPE = "PING";
+const AUTOMATION_PING_RESULT_TYPE = "PING_RESULT";
 const AUTOMATION_ALLOWED_HOSTNAMES = new Set(["chatgpt.com", "www.chatgpt.com"]);
 
 const htmlElement = document.documentElement;
@@ -94,6 +96,21 @@ window.addEventListener("message", (event) => {
   }
 
   if (event.origin !== window.location.origin || !isAutomationPageAllowed()) {
+    return;
+  }
+
+  if (
+    event.data?.source === AUTOMATION_PAGE_SOURCE
+    && event.data?.type === AUTOMATION_PING_TYPE
+    && typeof event.data?.requestId === "string"
+  ) {
+    window.postMessage({
+      source: AUTOMATION_EXTENSION_SOURCE,
+      type: AUTOMATION_PING_RESULT_TYPE,
+      requestId: event.data.requestId,
+      ok: true,
+      extension: "ChatGPT-Backup",
+    }, window.location.origin);
     return;
   }
 

@@ -15,6 +15,8 @@ const EXPORT_TIMEOUT_MS = 10 * 60 * 1000;
 const runId = `phase4-run-${localTimestamp()}`;
 const logPath = path.join(LOG_DIR, `phase4-run-once-backup-${runId}.log`);
 const summaryPath = path.join(STATE_DIR, `phase4-run-summary-${runId}.json`);
+let activeCdpUrl = CDP_URL;
+let activeStagingDir = STAGING_DIR;
 
 let browser = null;
 let context = null;
@@ -72,6 +74,13 @@ function log(message, meta = undefined) {
   if (logStream) logStream.write(`${line}\n`);
 }
 
+async function closeLogStream() {
+  if (!logStream) return;
+  const stream = logStream;
+  logStream = null;
+  await new Promise((resolve) => stream.end(resolve));
+}
+
 function promptEnter(message) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -87,8 +96,8 @@ function sleep(ms) {
 }
 
 function listZipNames() {
-  if (!fs.existsSync(STAGING_DIR)) return [];
-  return fs.readdirSync(STAGING_DIR).filter((name) => name.endsWith('.zip')).sort();
+  if (!fs.existsSync(activeStagingDir)) return [];
+  return fs.readdirSync(activeStagingDir).filter((name) => name.endsWith('.zip')).sort();
 }
 
 function validateZip(zipPath) {
@@ -114,7 +123,7 @@ async function waitForExpectedZip({ beforeZipNames, bucket, nameForFilename, bac
       continue;
     }
 
-    const zipPath = path.join(STAGING_DIR, exact);
+    const zipPath = path.join(activeStagingDir, exact);
     const crdownloadPath = `${zipPath}.crdownload`;
     if (fs.existsSync(crdownloadPath)) {
       await sleep(1000);
@@ -296,16 +305,23 @@ function finalizeSummary(summary) {
   fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
 }
 
-async function run() {
+async function run({
+  skipConfirmation = false,
+  manageExitCode = true,
+  cdpUrl = CDP_URL,
+  stagingDir = STAGING_DIR,
+} = {}) {
+  activeCdpUrl = cdpUrl;
+  activeStagingDir = stagingDir;
   ensureDir(LOG_DIR);
   ensureDir(STATE_DIR);
   ensureDir(SCREENSHOT_DIR);
-  ensureDir(STAGING_DIR);
+  ensureDir(activeStagingDir);
   logStream = fs.createWriteStream(logPath, { flags: 'a' });
   const summary = createSummary(new Date().toISOString());
 
   try {
-    browser = await chromium.connectOverCDP(CDP_URL);
+    browser = await chromium.connectOverCDP(activeCdpUrl);
     context = browser.contexts()[0];
     if (!context) throw new Error('CDP connected but no browser context was available');
     page = context.pages().find((candidate) => candidate.url().startsWith('https://chatgpt.com/'));
@@ -317,15 +333,17 @@ async function run() {
 
     log('connected over CDP', { pageUrl: page.url(), pageCount: context.pages().length });
     await resetDownloadBehavior(page);
-    await promptEnter([
-      'Confirm in the automation Chrome window:',
-      '1. target ChatGPT account',
-      '2. Personal space',
-      '3. English UI',
-      '4. recent chats and projects are visible',
-      '5. ChatGPT-Backup extension is loaded in chrome://extensions',
-      'Press Ctrl+C to abort if any condition is not satisfied.',
-    ].join('\n'));
+    if (!skipConfirmation) {
+      await promptEnter([
+        'Confirm in the automation Chrome window:',
+        '1. target ChatGPT account',
+        '2. Personal space',
+        '3. English UI',
+        '4. recent chats and projects are visible',
+        '5. ChatGPT-Backup extension is loaded in chrome://extensions',
+        'Press Ctrl+C to abort if any condition is not satisfied.',
+      ].join('\n'));
+    }
 
     const health = await healthCheck(page);
     log('page health check', health);
@@ -395,19 +413,22 @@ async function run() {
   } catch (error) {
     log('phase4 workflow failed', { error: error.message || String(error), startScript: START_SCRIPT });
     if (summary.recent.status === 'pending') summary.recent = { status: 'failed', zipPath: null, mdCount: 0, error: error.message || String(error) };
-    process.exitCode = 1;
+    if (manageExitCode) process.exitCode = 1;
   } finally {
     finalizeSummary(summary);
     log('phase4 workflow complete', { status: summary.status, totals: summary.totals, summaryPath, browserKeptOpen: Boolean(browser) });
-    if (summary.status === 'partial') process.exitCode = 2;
-    if (summary.status === 'failed') process.exitCode = 1;
+    if (manageExitCode && summary.status === 'partial') process.exitCode = 2;
+    if (manageExitCode && summary.status === 'failed') process.exitCode = 1;
+    await closeLogStream();
   }
+  return { summary, summaryPath, logPath };
 }
 
 module.exports = {
   aggregateStatus,
   buildExpectedZipFilename,
   isAcceptedZipFilename,
+  run,
   sanitizeFilename,
   validateBucket,
 };

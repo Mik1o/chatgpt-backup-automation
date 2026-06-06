@@ -14,6 +14,7 @@ const organizerRunId = `phase5-organize-${localTimestamp()}`;
 const logPath = path.join(LOG_DIR, `phase5-organize-${organizerRunId}.log`);
 const organizerSummaryPath = path.join(STATE_DIR, `phase5-organize-summary-${organizerRunId}.json`);
 const organizerTmpRoot = path.join(TMP_DIR, 'phase5-organize', organizerRunId);
+let activeStagingDir = STAGING_DIR;
 
 let logStream = null;
 
@@ -110,7 +111,7 @@ function assertWithin(root, candidate) {
 function validateSourceZipPath(zipPath) {
   const resolved = path.resolve(zipPath);
   try {
-    assertWithin(STAGING_DIR, resolved);
+    assertWithin(activeStagingDir, resolved);
   } catch (_error) {
     throw new Error(`ZIP is outside staging: ${resolved}`);
   }
@@ -158,6 +159,13 @@ function log(message, meta = undefined) {
   const line = `${new Date().toISOString()} ${message}${meta === undefined ? '' : ` ${JSON.stringify(meta)}`}`;
   console.log(line);
   if (logStream) logStream.write(`${line}\n`);
+}
+
+async function closeLogStream() {
+  if (!logStream) return;
+  const stream = logStream;
+  logStream = null;
+  await new Promise((resolve) => stream.end(resolve));
 }
 
 function parseArgs(argv) {
@@ -303,7 +311,8 @@ function writeIndex(accountRoot, config, backupRunId, organizerSummary, conversa
   return indexPath;
 }
 
-async function run() {
+async function run({ summaryPath = null, manageExitCode = true, stagingDir = STAGING_DIR } = {}) {
+  activeStagingDir = stagingDir;
   ensureDir(STATE_DIR);
   ensureDir(LOG_DIR);
   ensureDir(TMP_DIR);
@@ -328,7 +337,7 @@ async function run() {
   try {
     const config = loadConfig();
     const args = parseArgs(process.argv.slice(2));
-    const sourceSummaryPath = path.resolve(args.summaryPath || findLatestPhase4Summary());
+    const sourceSummaryPath = path.resolve(summaryPath || args.summaryPath || findLatestPhase4Summary());
     const phase4 = loadAndValidatePhase4Summary(sourceSummaryPath);
     const accountRoot = path.resolve(config.archive_root, sanitizePathSegment(config.target_email));
     result.backupRunId = phase4.runId;
@@ -466,14 +475,16 @@ async function run() {
       error: result.error,
     });
     log('organizer stopped', { error: result.error });
-    process.exitCode = result.status === 'partial' ? 2 : 1;
+    if (manageExitCode) process.exitCode = result.status === 'partial' ? 2 : 1;
   } finally {
     if (!result.endedAt) result.endedAt = new Date().toISOString();
     atomicWrite(organizerSummaryPath, `${JSON.stringify(result, null, 2)}\n`);
     log('organizer complete', { status: result.status, totals: result.totals, organizerSummaryPath });
-    if (result.status === 'partial') process.exitCode = 2;
-    if (result.status === 'failed') process.exitCode = 1;
+    if (manageExitCode && result.status === 'partial') process.exitCode = 2;
+    if (manageExitCode && result.status === 'failed') process.exitCode = 1;
+    await closeLogStream();
   }
+  return { summary: result, summaryPath: organizerSummaryPath, logPath };
 }
 
 module.exports = {
@@ -484,6 +495,7 @@ module.exports = {
   determineOrganizerStatus,
   extractMarkdownEntries,
   makeWeakKey,
+  run,
   sanitizePathSegment,
   updateIndex,
   validateSourceZipPath,
