@@ -13,6 +13,8 @@
     "phase3c:smoke": "/Applications/Codex.app/Contents/Resources/node app/phase3c-cdp-smoke-test.js",
     "phase4:run-once": "/Applications/Codex.app/Contents/Resources/node app/phase4-run-once-backup.js",
     "test:phase4-static": "/Applications/Codex.app/Contents/Resources/node tests/phase4-static.test.js",
+    "phase5:organize": "/Applications/Codex.app/Contents/Resources/node app/phase5-organize-archive.js",
+    "test:phase5-static": "/Applications/Codex.app/Contents/Resources/node tests/phase5-static.test.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
