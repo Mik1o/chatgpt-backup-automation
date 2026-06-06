@@ -57,9 +57,10 @@ Chinese and other non-ASCII directory names are preserved. Unsafe path character
 
 ## E. ZIP Extraction
 
-- ZIP entries are listed and checked for path traversal before extraction.
+- ZIP entries are read with the extension's bundled JSZip. This avoids macOS `/usr/bin/unzip` failing with `Illegal byte sequence` on ZIP entries whose UTF-8 names contain Chinese characters.
+- Entry names are checked for path traversal before extraction.
 - Each ZIP extracts into `.local/tmp/phase5-organize/<organizerRunId>/<zip-basename>/`.
-- Only non-hidden `.md` files are processed.
+- Only `.md` entries are processed. Their content is written to safe numbered temporary files, while `_entries.json` preserves the original ZIP entry-name mapping.
 - ZIP-internal directories do not determine the archive bucket or project.
 - Staging ZIPs remain untouched.
 
@@ -95,6 +96,7 @@ The account-level index records organizer runs and conversations.
 - Existing conversation IDs or weak keys are updated, not duplicated.
 - Existing `_index.json` is backed up before update.
 - Writes use a temporary file followed by rename.
+- If the required recent-conversations ZIP fails, the organizer stops without updating `_index.json`.
 
 ## I. Safety Strategy
 
@@ -120,7 +122,7 @@ The account-level index records organizer runs and conversations.
 
 ## L. Go / No-Go
 
-Current result: Partial until `.local/config.json` contains a valid target email and the organizer is rerun.
+Current result: Success after replacing macOS `unzip` extraction with bundled JSZip.
 
 No final archive should be written while the config still contains the template target email.
 
@@ -133,6 +135,27 @@ Verified config-gate run:
 - Account archive root: not created
 - Reason: config template created; target email still requires user input
 
+Failed configured run:
+
+- Organizer run ID: `phase5-organize-2026-06-06_092559`
+- Result: partial
+- ZIPs processed: 0
+- Failed ZIPs: 5
+- Root cause: macOS `/usr/bin/unzip` could not create ZIP entries with decoded Chinese filenames and reported `Illegal byte sequence`
+- Remediation: use bundled JSZip, safe numbered temporary files, and original-entry mapping
+
+Verified successful run:
+
+- Organizer run ID: `phase5-organize-2026-06-06_093115`
+- Result: success
+- ZIPs processed: 5
+- Markdown entries written: 29
+- Failed ZIPs: 0
+- Final unique conversation files: 27
+- Frontmatter validation failures: 0
+- Three project ZIP entries shared one `conversation_id`; per the identity rule, they updated one archive file and produced two recorded overwrites
+- Staging ZIPs remained untouched
+
 ## M. Phase 6 Recommendation
 
-Do not start Phase 6 until Phase 5 successfully processes all Phase 4 success ZIPs, writes frontmatter Markdown, and creates or updates `_index.json`.
+Phase 5 has processed all Phase 4 success ZIPs, written frontmatter Markdown, and updated `_index.json`. Phase 6 may be planned separately; it is not started here.

@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const JSZip = require('../extension/chatgpt-backup/jszip.js');
 
 const {
   applyFrontmatter,
@@ -9,6 +10,7 @@ const {
   buildArchiveDirectory,
   chooseArchiveFilename,
   determineOrganizerStatus,
+  extractMarkdownEntries,
   makeWeakKey,
   sanitizePathSegment,
   updateIndex,
@@ -90,6 +92,26 @@ assert.equal(determineOrganizerStatus({ failedZips: 0, warnings: ['warning'], er
 assert.equal(determineOrganizerStatus({ failedZips: 0, warnings: [], error: 'boom' }), 'failed');
 assert.equal(determineOrganizerStatus({ failedZips: 0, warnings: [], error: 'Created config template at x' }), 'partial');
 
-assert.ok(phase5Source.includes('identityPaths.get(identityKey)'), 'same identity should reuse one archive path within a run');
+async function run() {
+  const zip = new JSZip();
+  zip.file('中文对话.md', '# 中文对话\n');
+  zip.file('ignored.txt', 'ignored');
+  const zipPath = path.join(tmp, 'unicode.zip');
+  fs.writeFileSync(zipPath, await zip.generateAsync({ type: 'nodebuffer' }));
+  const extracted = await extractMarkdownEntries(zipPath, path.join(tmp, 'extracted'));
+  assert.equal(extracted.length, 1);
+  assert.equal(extracted[0].sourceEntry, '中文对话.md');
+  assert.equal(fs.readFileSync(extracted[0].path, 'utf8'), '# 中文对话\n');
 
-console.log('phase5 static checks passed');
+  assert.ok(phase5Source.includes('identityPaths.get(identityKey)'), 'same identity should reuse one archive path within a run');
+  assert.ok(phase5Source.includes("require('../extension/chatgpt-backup/jszip.js')"), 'organizer should use bundled JSZip');
+  assert.equal(phase5Source.includes("execFileSync('unzip'"), false, 'organizer must not extract invalid ZIP filenames with system unzip');
+  assert.ok(phase5Source.includes('Recent ZIP processing failed'), 'recent ZIP failure must stop index update');
+
+  console.log('phase5 static checks passed');
+}
+
+run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

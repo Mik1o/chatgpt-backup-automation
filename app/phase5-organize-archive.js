@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const JSZip = require('../extension/chatgpt-backup/jszip.js');
 
 const PROJECT_ROOT = '/Users/one/chatgpt-backup-automation';
 const CONFIG_PATH = path.join(PROJECT_ROOT, '.local', 'config.json');
@@ -209,34 +209,26 @@ function loadAndValidatePhase4Summary(summaryPath) {
   return summary;
 }
 
-function listZipEntries(zipPath) {
-  const output = execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
-  const entries = output.split(/\r?\n/).filter(Boolean);
-  for (const entry of entries) {
-    if (path.isAbsolute(entry) || entry.split(/[\\/]/).includes('..')) throw new Error(`Unsafe ZIP entry: ${entry}`);
-  }
-  return entries;
-}
-
-function extractZip(zipPath, targetDir) {
-  const entries = listZipEntries(zipPath);
+async function extractMarkdownEntries(zipPath, targetDir) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(zipPath));
+  const entries = Object.values(zip.files).filter((entry) => !entry.dir && /\.md$/i.test(entry.name));
+  if (!entries.length) throw new Error('ZIP contains no Markdown files');
   ensureDir(targetDir);
-  execFileSync('unzip', ['-q', zipPath, '-d', targetDir]);
-  return entries;
-}
-
-function findMarkdownFiles(root) {
-  const found = [];
-  const visit = (directory) => {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name.startsWith('.')) continue;
-      const fullPath = assertWithin(root, path.join(directory, entry.name));
-      if (entry.isDirectory()) visit(fullPath);
-      else if (entry.isFile() && /\.md$/i.test(entry.name)) found.push(fullPath);
+  const extracted = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (path.isAbsolute(entry.name) || entry.name.split(/[\\/]/).includes('..')) {
+      throw new Error(`Unsafe ZIP entry: ${entry.name}`);
     }
-  };
-  visit(root);
-  return found;
+    const temporaryPath = assertWithin(targetDir, path.join(targetDir, `${String(index + 1).padStart(4, '0')}.md`));
+    fs.writeFileSync(temporaryPath, await entry.async('nodebuffer'));
+    extracted.push({ path: temporaryPath, sourceEntry: entry.name });
+  }
+  atomicWrite(path.join(targetDir, '_entries.json'), `${JSON.stringify(extracted.map((entry) => ({
+    sourceEntry: entry.sourceEntry,
+    temporaryFile: path.basename(entry.path),
+  })), null, 2)}\n`);
+  return extracted;
 }
 
 function extractMetadata(markdown, sourceEntry) {
@@ -368,9 +360,7 @@ async function run() {
         const zipPath = validateSourceZipPath(source.zipPath);
         if (!fs.existsSync(zipPath)) throw new Error(`ZIP does not exist: ${zipPath}`);
         const extractDir = path.join(organizerTmpRoot, path.basename(zipPath, '.zip'));
-        extractZip(zipPath, extractDir);
-        const markdownFiles = findMarkdownFiles(extractDir);
-        if (!markdownFiles.length) throw new Error('ZIP contains no Markdown files');
+        const markdownEntries = await extractMarkdownEntries(zipPath, extractDir);
 
         const projectSegment = source.projectName ? projectDirectories.get(source.projectName) : null;
         const archiveDir = source.bucket === 'project'
@@ -379,8 +369,9 @@ async function run() {
         assertWithin(accountRoot, archiveDir);
         ensureDir(archiveDir);
 
-        for (const markdownPath of markdownFiles) {
-          const sourceEntry = path.relative(extractDir, markdownPath);
+        for (const markdownEntry of markdownEntries) {
+          const markdownPath = markdownEntry.path;
+          const sourceEntry = markdownEntry.sourceEntry;
           const markdown = fs.readFileSync(markdownPath, 'utf8');
           const metadata = extractMetadata(markdown, sourceEntry);
           const weakKey = makeWeakKey({ bucket: source.bucket, projectName: source.projectName, sourceEntry });
@@ -456,6 +447,9 @@ async function run() {
     result.totals.zipsProcessed = result.processedZips.filter((item) => item.status === 'success').length;
     result.totals.markdownWritten = result.writtenMarkdown.length;
     result.totals.overwritten = result.writtenMarkdown.filter((item) => item.overwritten).length;
+    const recentResult = result.processedZips.find((item) => item.bucket === 'recent');
+    if (recentResult?.status !== 'success') throw new Error(`Recent ZIP processing failed: ${recentResult?.error || 'unknown error'}`);
+
     result.status = determineOrganizerStatus({
       failedZips: result.totals.failedZips,
       warnings: result.warnings,
@@ -488,6 +482,7 @@ module.exports = {
   buildArchiveDirectory,
   chooseArchiveFilename,
   determineOrganizerStatus,
+  extractMarkdownEntries,
   makeWeakKey,
   sanitizePathSegment,
   updateIndex,
