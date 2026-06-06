@@ -18,6 +18,13 @@
     "doctor": "/Applications/Codex.app/Contents/Resources/node app/doctor.js",
     "run:once": "/Applications/Codex.app/Contents/Resources/node app/run-once.js",
     "test:phase6-static": "/Applications/Codex.app/Contents/Resources/node tests/phase6-static.test.js",
+    "run:scheduled": "/Applications/Codex.app/Contents/Resources/node app/run-scheduled.js",
+    "launchagent:install": "/Applications/Codex.app/Contents/Resources/node app/launchagent.js install",
+    "launchagent:uninstall": "/Applications/Codex.app/Contents/Resources/node app/launchagent.js uninstall",
+    "launchagent:status": "/Applications/Codex.app/Contents/Resources/node app/launchagent.js status",
+    "launchagent:kickstart": "/Applications/Codex.app/Contents/Resources/node app/launchagent.js kickstart",
+    "launchagent:print-plist": "/Applications/Codex.app/Contents/Resources/node app/launchagent.js print-plist",
+    "test:phase7-static": "/Applications/Codex.app/Contents/Resources/node tests/phase7-static.test.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

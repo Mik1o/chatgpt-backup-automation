@@ -3,6 +3,8 @@ const path = require('node:path');
 const readline = require('node:readline');
 const phase4 = require('./phase4-run-once-backup');
 const phase5 = require('./phase5-organize-archive');
+const { acquireLock, releaseLock } = require('./lib/lock');
+const { isRecentChatUrl, writeLastKnownRecent } = require('./lib/chrome-launcher');
 const {
   PROJECT_ROOT,
   aggregateRunStatus,
@@ -32,6 +34,9 @@ async function run() {
   const logPath = path.join(logDir, `run-once-${runId}.log`);
   const logStream = fs.createWriteStream(logPath, { flags: 'a' });
   let summary = createRunSummary({ runId, targetEmail: null, logPath });
+  const lockPath = path.join(stateDir, 'run.lock');
+  let lockOwner = null;
+  let confirmedRecentUrl = null;
 
   const log = (message, meta = undefined) => {
     const line = `${new Date().toISOString()} ${message}${meta === undefined ? '' : ` ${JSON.stringify(meta)}`}`;
@@ -40,6 +45,14 @@ async function run() {
   };
 
   try {
+    const lock = acquireLock({ lockPath, mode: 'manual', runId });
+    if (!lock.acquired) {
+      summary.status = 'skipped_locked';
+      summary.failureStage = 'lock';
+      summary.error = 'Another project backup run is active';
+      return { summary, summaryPath, logPath };
+    }
+    lockOwner = lock.owner;
     const preflight = await runPreflight({ requireCdp: true, requireChatGptPage: true, requirePing: true });
     summary.targetEmail = preflight.config?.target_email || null;
     summary.preflight = { status: preflight.status, checks: preflight.checks };
@@ -47,6 +60,7 @@ async function run() {
       summary.failureStage = 'preflight';
       throw new Error('Fatal preflight checks failed');
     }
+    if (isRecentChatUrl(preflight.page?.url())) confirmedRecentUrl = preflight.page.url();
 
     await promptEnter([
       'Confirm in automation Chrome:',
@@ -112,6 +126,9 @@ async function run() {
         organizeStatus: summary.organize.status,
       });
     }
+    if (summary.status === 'success' && confirmedRecentUrl) {
+      writeLastKnownRecent(path.join(stateDir, 'last-known-chatgpt.json'), { recentUrl: confirmedRecentUrl, sourceRunId: runId });
+    }
   } catch (error) {
     if (!summary.failureStage) summary.failureStage = 'preflight';
     summary.error = error.message || String(error);
@@ -122,7 +139,8 @@ async function run() {
     atomicWrite(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
     log('run:once complete', { status: summary.status, failureStage: summary.failureStage, summaryPath });
     await new Promise((resolve) => logStream.end(resolve));
-    process.exitCode = summary.status === 'success' ? 0 : summary.status === 'partial' ? 2 : 1;
+    if (lockOwner) releaseLock({ lockPath, owner: lockOwner });
+    process.exitCode = summary.status === 'success' || summary.status === 'skipped_locked' ? 0 : summary.status === 'partial' ? 2 : 1;
   }
   return { summary, summaryPath, logPath };
 }

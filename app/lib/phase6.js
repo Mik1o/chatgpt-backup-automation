@@ -11,6 +11,18 @@ const DEFAULTS = {
   staging_dir: '/Users/one/Downloads/ChatGPT_Backup_Staging',
   chrome_user_data_dir: path.join(PROJECT_ROOT, '.local', 'chrome-user-data-cdp'),
 };
+const DEFAULT_SCHEDULE = {
+  enabled: true,
+  target_hour: 9,
+  target_minute: 30,
+  check_interval_minutes: 30,
+  max_scheduled_attempts_per_day: 1,
+  allow_auto_start_chrome: true,
+  notify_success: true,
+  notify_partial: true,
+  notify_failure: true,
+  notify_skipped: false,
+};
 const LOCAL_DIRS = ['logs', 'state', 'screenshots', 'tmp'].map((name) => path.join(PROJECT_ROOT, '.local', name));
 const START_SCRIPT = path.join(PROJECT_ROOT, 'scripts', 'start-cdp-chrome.sh');
 const NO_DELETION_POLICY = Object.freeze({
@@ -37,7 +49,7 @@ function atomicWrite(filePath, content) {
 }
 
 function validateConfig(input) {
-  const config = { ...DEFAULTS, ...input };
+  const config = { ...DEFAULTS, ...input, schedule: { ...DEFAULT_SCHEDULE, ...(input.schedule || {}) } };
   if (!config.target_email || config.target_email === TEMPLATE_EMAIL || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(config.target_email)) {
     throw new Error('Invalid target_email in .local/config.json');
   }
