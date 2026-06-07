@@ -60,6 +60,11 @@ const plist = renderPlist();
 assert.ok(plist.includes('com.local.chatgpt-backup-automation'));
 assert.ok(plist.includes('<key>StartInterval</key>'));
 assert.ok(plist.includes('<integer>1800</integer>'));
+assert.ok(plist.includes('<key>StartCalendarInterval</key>'));
+assert.ok(plist.includes('<key>Hour</key>'));
+assert.ok(plist.includes('<integer>9</integer>'));
+assert.ok(plist.includes('<key>Minute</key>'));
+assert.ok(plist.includes('<integer>30</integer>'));
 assert.ok(plist.includes('/Users/one/chatgpt-backup-automation/scripts/run-scheduled.sh'));
 assert.equal(plist.includes('person@example.com'), false);
 

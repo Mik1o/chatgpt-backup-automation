@@ -6,7 +6,7 @@ Phase 7 adds a noninteractive scheduled backup command, daily schedule gates, a 
 
 ## B. LaunchAgent And Scheduled Runner
 
-LaunchAgent triggers `scripts/run-scheduled.sh` every 30 minutes. The lightweight internal schedule gate decides whether a real backup is due. This avoids depending on launchd to replay an exact 09:30 event after sleep or shutdown.
+LaunchAgent triggers `scripts/run-scheduled.sh` at 09:30 and every 30 minutes. The lightweight internal schedule gate decides whether a real backup is due. The calendar trigger starts promptly at 09:30, while the interval trigger avoids depending on launchd to replay an exact event after sleep or shutdown.
 
 ## C. Authentication Boundary
 
@@ -37,7 +37,7 @@ Forced runs do not consume the daily automatic-attempt allowance.
 
 ## E. Missed-Run Policy
 
-`RunAtLoad` and `StartInterval=1800` trigger periodic checks. If the Mac was asleep or off at 09:30, the first later trigger runs once when no success or attempt exists for that local date.
+`RunAtLoad`, `StartCalendarInterval=09:30`, and `StartInterval=1800` trigger checks. If the Mac was asleep or off at 09:30, the first later interval/load trigger runs once when no success or attempt exists for that local date.
 
 ## F. Lock
 
@@ -150,3 +150,4 @@ Post-install validation on June 7, 2026:
 - LaunchAgent install, `RunAtLoad`, before-schedule skip, status, and kickstart were observed.
 - A forced auto-start run initially failed because the unpacked extension bridge was not ready immediately after Chrome exposed CDP; scheduled preflight now retries bridge readiness for up to 30 seconds.
 - Forced runs no longer consume the daily automatic-attempt allowance, so operator diagnostics before 09:30 cannot block the day's normal scheduled run.
+- A calendar trigger was added after observing that `StartInterval=1800` alone fired at 09:28 and would not run again until roughly 09:58; this was scheduling phase alignment, not a timezone error.
