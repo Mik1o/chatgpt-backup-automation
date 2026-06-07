@@ -74,6 +74,28 @@ function shouldNotify(schedule, status) {
   return schedule.notify_skipped;
 }
 
+function shouldCountScheduledAttempt({ force }) {
+  return !force;
+}
+
+async function waitForScheduledPreflight({
+  timeoutMs = 30000,
+  intervalMs = 2000,
+  runPreflightFn = runPreflight,
+  sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let preflight = null;
+  do {
+    preflight = await runPreflightFn({ requireCdp: true, requireChatGptPage: true, requirePing: true });
+    const pingFatal = preflight.checks?.some((check) => check.name === 'extension_bridge_ping' && check.status === 'fatal');
+    if (preflight.status !== 'failed' || !pingFatal) return preflight;
+    if (Date.now() >= deadline) return preflight;
+    await sleepFn(intervalMs);
+  } while (Date.now() < deadline);
+  return preflight;
+}
+
 async function run(options = parseArgs(process.argv.slice(2))) {
   ensureDir(STATE_DIR);
   ensureDir(LOG_DIR);
@@ -128,7 +150,12 @@ async function run(options = parseArgs(process.argv.slice(2))) {
       return summary;
     }
     lockOwner = lock.owner;
-    schedulerState = updateSchedulerState(schedulerState, { date, runId, status: 'running', countAttempt: true });
+    schedulerState = updateSchedulerState(schedulerState, {
+      date,
+      runId,
+      status: 'running',
+      countAttempt: shouldCountScheduledAttempt(options),
+    });
     writeSchedulerState(SCHEDULER_STATE_PATH, schedulerState);
 
     const known = loadLastKnownRecent(LAST_KNOWN_PATH);
@@ -144,7 +171,7 @@ async function run(options = parseArgs(process.argv.slice(2))) {
 
     const prepared = await ensureRecentPage(config, { statePath: LAST_KNOWN_PATH });
     summary.recent = { url: prepared.recentUrl, source: known?.recent_url === prepared.recentUrl ? 'last_known' : 'open_page' };
-    const preflight = await runPreflight({ requireCdp: true, requireChatGptPage: true, requirePing: true });
+    const preflight = await waitForScheduledPreflight();
     summary.preflight = { status: preflight.status, checks: preflight.checks };
     if (preflight.status === 'failed') {
       summary.failureStage = 'preflight';
@@ -225,7 +252,7 @@ async function run(options = parseArgs(process.argv.slice(2))) {
   return summary;
 }
 
-module.exports = { createScheduledSummary, parseArgs, run, shouldNotify };
+module.exports = { createScheduledSummary, parseArgs, run, shouldCountScheduledAttempt, shouldNotify, waitForScheduledPreflight };
 
 if (require.main === module) {
   run().finally(() => process.exit(process.exitCode || 0));

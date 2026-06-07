@@ -33,6 +33,8 @@ Default schedule:
 
 Before 09:30, after a success on the same local date, or after the daily attempt limit, automatic runs are skipped. `--force` bypasses these daily gates but still requires the lock and fatal preflight.
 
+Forced runs do not consume the daily automatic-attempt allowance.
+
 ## E. Missed-Run Policy
 
 `RunAtLoad` and `StartInterval=1800` trigger periodic checks. If the Mac was asleep or off at 09:30, the first later trigger runs once when no success or attempt exists for that local date.
@@ -54,6 +56,8 @@ Notifications use macOS `/usr/bin/osascript`. Success, partial, and failure noti
 ## H. Automation Chrome Auto-Start
 
 If CDP is unavailable and auto-start is enabled, scheduled mode launches Google Chrome with the isolated automation profile, loopback CDP, and no first-run/default-browser prompts. It does not use `--load-extension`, does not use the daily profile, and does not kill Chrome.
+
+After Chrome auto-start, scheduled preflight retries the extension bridge for up to 30 seconds so a slowly restored unpacked extension does not cause an immediate false failure.
 
 ## I. Last-Known Recent URL
 
@@ -140,3 +144,9 @@ Verified on June 6, 2026:
 - Manual `run:once` returned `skipped_locked` while a scheduled lock was active, without prompting or exporting.
 - Plist rendering and `plutil -lint` passed.
 - LaunchAgent remains uninstalled because no exact `INSTALL` confirmation was provided.
+
+Post-install validation on June 7, 2026:
+
+- LaunchAgent install, `RunAtLoad`, before-schedule skip, status, and kickstart were observed.
+- A forced auto-start run initially failed because the unpacked extension bridge was not ready immediately after Chrome exposed CDP; scheduled preflight now retries bridge readiness for up to 30 seconds.
+- Forced runs no longer consume the daily automatic-attempt allowance, so operator diagnostics before 09:30 cannot block the day's normal scheduled run.

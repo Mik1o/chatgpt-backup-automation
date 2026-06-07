@@ -14,7 +14,7 @@ const { buildNotification } = require('../app/lib/notify');
 const { isRecentChatUrl } = require('../app/lib/chrome-launcher');
 const { validateConfig } = require('../app/lib/phase6');
 const { renderPlist } = require('../app/launchagent');
-const { createScheduledSummary } = require('../app/run-scheduled');
+const { createScheduledSummary, shouldCountScheduledAttempt, waitForScheduledPreflight } = require('../app/run-scheduled');
 
 const afterSchedule = new Date(2026, 5, 6, 10, 0, 0);
 const beforeSchedule = new Date(2026, 5, 6, 9, 0, 0);
@@ -67,6 +67,8 @@ const summary = createScheduledSummary({ runId: 'scheduled-test', dryRun: true, 
 assert.equal(summary.mode, 'scheduled');
 assert.equal(summary.dryRun, true);
 assert.ok(summary.gate && summary.lock && summary.preflight && summary.export && summary.organize && summary.artifacts);
+assert.equal(shouldCountScheduledAttempt({ force: false }), true);
+assert.equal(shouldCountScheduledAttempt({ force: true }), false);
 
 const projectRoot = path.join(__dirname, '..');
 const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
@@ -87,4 +89,25 @@ assert.ok(runOnceSource.includes('writeLastKnownRecent'));
 assert.equal(scheduledSource.includes('unlinkSync'), false);
 assert.equal(scheduledSource.includes('browser.close'), false);
 
-console.log('phase7 static checks passed');
+async function runAsyncChecks() {
+  let attempts = 0;
+  const retried = await waitForScheduledPreflight({
+    timeoutMs: 100,
+    intervalMs: 1,
+    runPreflightFn: async () => {
+      attempts += 1;
+      return attempts < 2
+        ? { status: 'failed', checks: [{ name: 'extension_bridge_ping', status: 'fatal' }] }
+        : { status: 'success', checks: [{ name: 'extension_bridge_ping', status: 'success' }] };
+    },
+    sleepFn: async () => {},
+  });
+  assert.equal(retried.status, 'success');
+  assert.equal(attempts, 2);
+  console.log('phase7 static checks passed');
+}
+
+runAsyncChecks().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
